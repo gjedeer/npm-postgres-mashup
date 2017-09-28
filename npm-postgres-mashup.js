@@ -49,13 +49,14 @@ function query (query, params, cb) {
 function log (header, details) {
     console.log(header);
     if (details) {
-        console.log("additional details written to npm2pg-log.txt");
+//        console.log("additional details written to npm2pg-log.txt");
         detailsText = ""
         if (typeof details === "string") {
             detailsText = details;
         } else if (details) {
             detailsText = JSON.stringify(details, null, 2);
         }
+		console.log(detailsText);
         fs.appendFile(logFile, header + "\n" + detailsText + "\n", function (err) {
             if (err) {
                 console.error("ERROR! log() couldn't write to the file");
@@ -95,6 +96,7 @@ exports.copyTheData = function (config) {
     buildSchema              = (config.buildSchema);
     reportingTablesRequested = (config.reportingTables);
     conString = "tcp://" + postgresUser + ":" + postgresPassword + "@" + postgresHost + "/" + postgresDatabase;
+	anew                     = config.anew;
     
     initPostgres();                
 };
@@ -128,7 +130,13 @@ function initPostgres () {
             process.exit();
         });
     } else {
-        figureOutWhereWeLeftOff();
+		if (anew) {
+			log('Starting from sequence id 0');
+			startingSeq = 0;
+			followCouch();
+		} else {
+			figureOutWhereWeLeftOff();
+		}
     }
 }
 
@@ -159,6 +167,7 @@ function followCouch () {
     var feed = new follow.Feed(opts);
     
     feed.on('change', function (change) {
+//		log('Processing change ' + change.seq);
         changesProcessing++;
         if (changesProcessing >= parallelLimit && !feed.is_paused) {
             feed.pause();
@@ -180,6 +189,22 @@ function followCouch () {
     feed.on('confirm', function (db) {
         log("npm db confirmed... Starting feed processing.");
     });
+
+//	feed.on('wait', function() {
+//		log('Idle - waiting for the next data chunk from registry');
+//	});
+
+	feed.on('timeout', function(info) {
+		log('Timeout - haven\'t received a heartbeat in ' + info.elapsed_ms + ' ms');
+	});
+
+	feed.on('retry', function(info) {
+		log('Retrying connection in ' + info.after + ' ms after seqid ' + info.since);
+	});
+
+	feed.on('stop', function() {
+		log('Stopping following the registry');
+	});
     
     feed.on('catchup', function (seq_id) {
         feed.stop();

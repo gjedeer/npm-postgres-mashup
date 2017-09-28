@@ -35,6 +35,7 @@ program
   .option('--reporting-tables',          'builds reporting tables after catching up with registry')
   .option('--save',                      'saves some parameters to $HOME/.npm2pgrc to use next run')
   .option('--forget',                    'forgets any previously saved parameters. exits immediately after')
+  .option('--anew',                      'starts from sequence id 0')
   .parse(process.argv);
 
 if (program.save) {
@@ -79,6 +80,7 @@ if (fs.existsSync(configFilePath)) {
     program.user = program.user || conf.user;
     program.password = program.password || conf.password;
     program.reportingTables = program.reportingTables || conf.reportingTables;
+	program.anew = program.anew || false;
     console.log("");
 }
 
@@ -95,5 +97,6 @@ npmpm.copyTheData({
     postgresUser: program.user,
     postgresPassword: program.password,
     buildSchema: program.buildSchema,
-    reportingTables: program.reportingTables
+    reportingTables: program.reportingTables,
+	anew: program.anew,
 });
