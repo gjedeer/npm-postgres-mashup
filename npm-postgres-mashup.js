@@ -12,7 +12,7 @@ var errorLimit = 20;    // If this many errors happen, we'll stop persisting to 
 var errorCount = 0;
 var schemaversion = 'max';
 var startingSeq = 1;
-var parallelLimit = 8;    // number of changes we'll process at once
+var parallelLimit = 1;    // number of changes we'll process at once
 var couchUrl;
 var postgresHost;
 var postgresUser;
@@ -49,7 +49,7 @@ function query (query, params, cb) {
 function log (header, details) {
     console.log(header);
     if (details) {
-//        console.log("additional details written to npm2pg-log.txt");
+        console.log("additional details written to npm2pg-log.txt");
         detailsText = ""
         if (typeof details === "string") {
             detailsText = details;
@@ -141,6 +141,7 @@ function initPostgres () {
 }
 
 function figureOutWhereWeLeftOff () {
+	console.log("Figuring where we left off");
     query('SELECT MAX(seq) AS maxseq FROM couch_seq_log;', [], function (err, result) {
         if (err) log(err);
         if (result && result.rows && result.rows[0] && result.rows[0].maxseq) {
@@ -161,19 +162,23 @@ function followCouch () {
         db: couchUrl,
         since: startingSeq, 
         include_docs: true,
-        heartbeat: 60 * 1000, // ms in which couch must responds
+        heartbeat: 5 * 1000, // ms in which couch must responds
     };
     var changesProcessing = 0; // used to track number of changes that are currently processing
     var feed = new follow.Feed(opts);
     
     feed.on('change', function (change) {
 //		log('Processing change ' + change.seq);
+		log("Change " + change.seq + ", ispaused: " + feed.is_paused);
+
         changesProcessing++;
         if (changesProcessing >= parallelLimit && !feed.is_paused) {
             feed.pause();
         }
         processChangeDoc(change, function () {
             changesProcessing--;
+			log("Change doc done, processing:" + changesProcessing + ", paused: " + feed.is_paused + ", limit:" + parallelLimit);
+
             if (changesProcessing < parallelLimit && feed.is_paused) {
                 feed.resume();
             }
@@ -231,6 +236,7 @@ function followCouch () {
         }
     });
 
+	log("Following feed");
     feed.follow();
 }
 
@@ -249,6 +255,7 @@ var metricsEndTime;
 var packagesProcessing = {}; 
 
 function processChangeDoc (change, cb) {
+	log("Applying change from npm registry: " + change.seq);
 
     async.waterfall([
         function initData (next){
@@ -295,7 +302,8 @@ function processChangeDoc (change, cb) {
             // Every so often we should log the lowest seq we are currently processing - 1
             // This was changed from logging every sequence and the state it was in 
             // That ended up being a lot of db traffic and overcomplicated things for little benefit
-            if (changeCount % 500 === 0) {
+            //if (changeCount % 500 === 0) {
+            if (true) { // AG: yeah, except when you just want to catch up
                 var minseq;
                 for (var p in packagesProcessing) {
                     var seq = packagesProcessing[p];
